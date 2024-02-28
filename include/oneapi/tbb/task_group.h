@@ -434,17 +434,17 @@ class isolated_task_group;
 template<typename F>
 class function_task : public task {
     const F m_func;
-    wait_context& m_wait_ctx;
+    reference_node* m_wait_tree_node;
     small_object_allocator m_allocator;
 
     void finalize(const execution_data& ed) {
         // Make a local reference not to access this after destruction.
-        wait_context& wo = m_wait_ctx;
+        reference_node* wo = m_wait_tree_node;
         // Copy allocator to the stack
         auto allocator = m_allocator;
         // Destroy user functor before release wait.
         this->~function_task();
-        wo.release();
+        wo->release();
 
         allocator.deallocate(this, ed);
     }
@@ -458,14 +458,14 @@ class function_task : public task {
         return nullptr;
     }
 public:
-    function_task(const F& f, wait_context& wo, small_object_allocator& alloc)
+    function_task(const F& f, reference_node* wo, small_object_allocator& alloc)
         : m_func(f)
-        , m_wait_ctx(wo)
+        , m_wait_tree_node(wo)
         , m_allocator(alloc) {}
 
-    function_task(F&& f, wait_context& wo, small_object_allocator& alloc)
+    function_task(F&& f, reference_node* wo, small_object_allocator& alloc)
         : m_func(std::move(f))
-        , m_wait_ctx(wo)
+        , m_wait_tree_node(wo)
         , m_allocator(alloc) {}
 };
 
@@ -492,7 +492,7 @@ public:
 
 class task_group_base : no_copy {
 protected:
-    wait_context m_wait_ctx;
+    wait_context_node m_wait_ctx;
     task_group_context m_context;
 
     template<typename F>
@@ -501,7 +501,7 @@ protected:
         m_wait_ctx.reserve();
         bool cancellation_status = false;
         try_call([&] {
-            execute_and_wait(t, context(), m_wait_ctx, context());
+            execute_and_wait(t, context(), m_wait_ctx.get_context(), context());
         }).on_completion([&] {
             // TODO: the reset method is not thread-safe. Ensure the correct behavior.
             cancellation_status = context().is_group_execution_cancelled();
@@ -518,7 +518,7 @@ protected:
 
         bool cancellation_status = false;
         try_call([&] {
-            execute_and_wait(*acs::release(h), context(), m_wait_ctx, context());
+            execute_and_wait(*acs::release(h), context(), m_wait_ctx.get_context(), context());
         }).on_completion([&] {
             // TODO: the reset method is not thread-safe. Ensure the correct behavior.
             cancellation_status = context().is_group_execution_cancelled();
@@ -529,9 +529,10 @@ protected:
 
     template<typename F>
     task* prepare_task(F&& f) {
-        m_wait_ctx.reserve();
+        auto wait_tree_node = r1::get_thread_reference_node(&m_wait_ctx);
+        wait_tree_node->reserve();
         small_object_allocator alloc{};
-        return alloc.new_object<function_task<typename std::decay<F>::type>>(std::forward<F>(f), m_wait_ctx, alloc);
+        return alloc.new_object<function_task<typename std::decay<F>::type>>(std::forward<F>(f), static_cast<reference_node*>(wait_tree_node), alloc);
     }
 
     task_group_context& context() noexcept {
@@ -543,7 +544,7 @@ protected:
         m_wait_ctx.reserve();
         small_object_allocator alloc{};
         using function_task_t =  d2::function_task<typename std::decay<F>::type>;
-        d2::task_handle_task* function_task_p =  alloc.new_object<function_task_t>(std::forward<F>(f), m_wait_ctx, context(), alloc);
+        d2::task_handle_task* function_task_p =  alloc.new_object<function_task_t>(std::forward<F>(f), m_wait_ctx.get_context(), context(), alloc);
 
         return d2::task_handle_accessor::construct(function_task_p);
     }
@@ -560,7 +561,7 @@ public:
     {}
 
     ~task_group_base() noexcept(false) {
-        if (m_wait_ctx.continue_execution()) {
+        if (m_wait_ctx.get_context().continue_execution()) {
 #if __TBB_CPP17_UNCAUGHT_EXCEPTIONS_PRESENT
             bool stack_unwinding_in_progress = std::uncaught_exceptions() > 0;
 #else
@@ -570,7 +571,7 @@ public:
             // in case of missing wait (for the sake of better testability & debuggability)
             if (!context().is_group_execution_cancelled())
                 cancel();
-            d1::wait(m_wait_ctx, context());
+            d1::wait(m_wait_ctx.get_context(), context());
             if (!stack_unwinding_in_progress)
                 throw_exception(exception_id::missing_wait);
         }
@@ -579,7 +580,7 @@ public:
     task_group_status wait() {
         bool cancellation_status = false;
         try_call([&] {
-            d1::wait(m_wait_ctx, context());
+            d1::wait(m_wait_ctx.get_context(), context());
         }).on_completion([&] {
             // TODO: the reset method is not thread-safe. Ensure the correct behavior.
             cancellation_status = m_context.is_group_execution_cancelled();
