@@ -211,6 +211,7 @@ T1 atomic_update(std::atomic<T1>& dst, T1 newValue, Pred compare) {
 struct cpu_features_type {
     bool rtm_enabled{false};
     bool waitpkg_enabled{false};
+    bool hybrid{false};
 };
 
 void detect_cpu_features(cpu_features_type& cpu_features);

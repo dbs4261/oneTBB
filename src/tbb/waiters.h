@@ -58,6 +58,7 @@ public:
         __TBB_ASSERT(t == nullptr, nullptr);
 
         if (is_worker_should_leave(slot)) {
+            if (!governor::hybrid_cpu()) {
             static constexpr std::chrono::microseconds worker_wait_leave_duration(1000);
             static_assert(worker_wait_leave_duration > std::chrono::steady_clock::duration(1), "Clock resolution is not enough for measured interval.");
 
@@ -74,6 +75,7 @@ public:
                 }
 #endif
                 d0::yield();
+            }
             }
             // Leave dispatch loop
             return false;

@@ -131,12 +131,14 @@ void detect_cpu_features(cpu_features_type& cpu_features) {
 #if __TBB_x86_32 || __TBB_x86_64
     const int rtm_ebx_mask = 1 << 11;
     const int waitpkg_ecx_mask = 1 << 5;
+    const int hybrid_edx_mask = 1 << 15;
     int registers[4] = {0};
 
     // Check RTM and WAITPKG
     check_cpuid(7, 0, registers);
     cpu_features.rtm_enabled = (registers[1] & rtm_ebx_mask) != 0;
     cpu_features.waitpkg_enabled = (registers[2] & waitpkg_ecx_mask) != 0;
+    cpu_features.hybrid = (registers[3] & hybrid_edx_mask) != 0;
 #endif /* (__TBB_x86_32 || __TBB_x86_64) */
 }
 

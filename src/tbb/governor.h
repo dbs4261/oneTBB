@@ -138,6 +138,8 @@ public:
     static bool wait_package_enabled() { return cpu_features.waitpkg_enabled; }
 #endif
 
+    static bool hybrid_cpu() { return cpu_features.hybrid; }
+
     static bool rethrow_exception_broken() { return is_rethrow_broken; }
 
     static bool is_itt_present() {
