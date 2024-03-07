@@ -46,6 +46,11 @@ struct execution_data;
 class wait_tree_node_interface;
 }
 
+namespace d2 {
+class task_group;
+class task_group_base;
+}
+
 namespace r1 {
 //! Task spawn/wait entry points
 TBB_EXPORT void __TBB_EXPORTED_FUNC spawn(d1::task& t, d1::task_group_context& ctx);
@@ -126,8 +131,7 @@ class wait_context {
     friend class r1::thread_data;
     friend class r1::task_dispatcher;
     friend class r1::external_waiter;
-    friend class task_group;
-    friend class task_group_base;
+    friend class wait_context_node;
     friend struct r1::task_arena_impl;
     friend struct r1::suspend_point_type;
 public:
@@ -175,6 +179,13 @@ public:
         return m_wait;
     }
 private:
+    friend class d2::task_group;
+    friend class d2::task_group_base;
+
+    bool continue_execution() const {
+        return m_wait.continue_execution();
+    }
+
     void release(std::uint32_t delta, const d1::execution_data&) override { release(delta); }
 
     wait_context m_wait;
